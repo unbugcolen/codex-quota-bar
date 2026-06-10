@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+Icon?
+.Spotlight-V100
+.Trashes
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Xcode generated files
+DerivedData/
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+
+# Build products
+*.app/
+*.dSYM/
+*.ipa
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
