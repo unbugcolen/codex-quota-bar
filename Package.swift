@@ -13,6 +13,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "CodexQuotaBar"
+        ),
+        .testTarget(
+            name: "CodexQuotaBarTests",
+            dependencies: ["CodexQuotaBar"]
         )
     ]
 )
