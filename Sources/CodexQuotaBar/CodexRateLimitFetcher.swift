@@ -1,14 +1,21 @@
 import Foundation
 
 final class CodexRateLimitFetcher {
-    private let executablePath: String
+    private let resolveExecutable: () throws -> String
 
-    init(executablePath: String = "/Applications/Codex.app/Contents/Resources/codex") {
-        self.executablePath = executablePath
+    init(resolveExecutable: @escaping () throws -> String = CodexExecutableLocator().resolve) {
+        self.resolveExecutable = resolveExecutable
     }
 
     func fetch(completion: @escaping (Result<QuotaSnapshot, Error>) -> Void) {
-        RateLimitFetchOperation(executablePath: executablePath, completion: completion).start()
+        do {
+            let executablePath = try resolveExecutable()
+            RateLimitFetchOperation(executablePath: executablePath, completion: completion).start()
+        } catch {
+            DispatchQueue.main.async {
+                completion(.failure(error))
+            }
+        }
     }
 }
 
@@ -33,7 +40,11 @@ private final class RateLimitFetchOperation {
 
     func start() {
         guard FileManager.default.isExecutableFile(atPath: executablePath) else {
-            finish(.failure(FetchError.codexExecutableMissing(executablePath)))
+            finish(
+                .failure(
+                    CodexExecutableLocatorError.notFound(checkedPaths: [executablePath])
+                )
+            )
             return
         }
 
@@ -189,7 +200,6 @@ private final class RateLimitFetchOperation {
 }
 
 private enum FetchError: LocalizedError {
-    case codexExecutableMissing(String)
     case malformedResponse
     case processExited(Int32, String)
     case rpcError(String)
@@ -197,8 +207,6 @@ private enum FetchError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .codexExecutableMissing(let path):
-            return "找不到 Codex 可执行文件：\(path)"
         case .malformedResponse:
             return "Codex app-server 返回格式不完整"
         case .processExited(let code, let stderr):
