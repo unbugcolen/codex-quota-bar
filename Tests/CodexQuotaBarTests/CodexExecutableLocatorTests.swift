@@ -21,4 +21,65 @@ final class CodexExecutableLocatorTests: XCTestCase {
         XCTAssertEqual(try locator.resolve(), executablePath)
         XCTAssertEqual(checkedPaths, [executablePath])
     }
+
+    func testResolveFallsBackToChatGPTStandardPath() throws {
+        let locator = CodexExecutableLocator(
+            applicationURL: { _ in
+                URL(fileURLWithPath: "/Moved/ChatGPT.app")
+            },
+            isExecutable: { path in
+                path == CodexExecutableLocator.fallbackPaths[0]
+            }
+        )
+
+        XCTAssertEqual(try locator.resolve(), CodexExecutableLocator.fallbackPaths[0])
+    }
+
+    func testResolveFallsBackToLegacyCodexStandardPath() throws {
+        let locator = CodexExecutableLocator(
+            applicationURL: { _ in nil },
+            isExecutable: { path in
+                path == CodexExecutableLocator.fallbackPaths[1]
+            }
+        )
+
+        XCTAssertEqual(try locator.resolve(), CodexExecutableLocator.fallbackPaths[1])
+    }
+
+    func testResolveChecksDuplicateCandidateOnlyOnce() throws {
+        var checkedPaths: [String] = []
+        let locator = CodexExecutableLocator(
+            applicationURL: { _ in
+                URL(fileURLWithPath: "/Applications/ChatGPT.app")
+            },
+            isExecutable: { path in
+                checkedPaths.append(path)
+                return path == CodexExecutableLocator.fallbackPaths[1]
+            }
+        )
+
+        XCTAssertEqual(try locator.resolve(), CodexExecutableLocator.fallbackPaths[1])
+        XCTAssertEqual(checkedPaths, CodexExecutableLocator.fallbackPaths)
+    }
+
+    func testResolveFailureListsEveryCheckedPath() {
+        let applicationPath = "/Moved/ChatGPT.app"
+        let dynamicPath = applicationPath + "/Contents/Resources/codex"
+        let locator = CodexExecutableLocator(
+            applicationURL: { _ in
+                URL(fileURLWithPath: applicationPath)
+            },
+            isExecutable: { _ in false }
+        )
+
+        XCTAssertThrowsError(try locator.resolve()) { error in
+            guard case .notFound(let checkedPaths)? = error as? CodexExecutableLocatorError else {
+                return XCTFail("Expected notFound error, got \(error)")
+            }
+
+            XCTAssertEqual(checkedPaths, [dynamicPath] + CodexExecutableLocator.fallbackPaths)
+            XCTAssertTrue(error.localizedDescription.contains("ChatGPT"))
+            XCTAssertTrue(error.localizedDescription.contains("Codex"))
+        }
+    }
 }
