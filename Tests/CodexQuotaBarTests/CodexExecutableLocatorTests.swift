@@ -23,27 +23,29 @@ final class CodexExecutableLocatorTests: XCTestCase {
     }
 
     func testResolveFallsBackToChatGPTStandardPath() throws {
+        let expectedPath = "/Applications/ChatGPT.app/Contents/Resources/codex"
         let locator = CodexExecutableLocator(
             applicationURL: { _ in
                 URL(fileURLWithPath: "/Moved/ChatGPT.app")
             },
             isExecutable: { path in
-                path == CodexExecutableLocator.fallbackPaths[0]
+                path == expectedPath
             }
         )
 
-        XCTAssertEqual(try locator.resolve(), CodexExecutableLocator.fallbackPaths[0])
+        XCTAssertEqual(try locator.resolve(), expectedPath)
     }
 
     func testResolveFallsBackToLegacyCodexStandardPath() throws {
+        let expectedPath = "/Applications/Codex.app/Contents/Resources/codex"
         let locator = CodexExecutableLocator(
             applicationURL: { _ in nil },
             isExecutable: { path in
-                path == CodexExecutableLocator.fallbackPaths[1]
+                path == expectedPath
             }
         )
 
-        XCTAssertEqual(try locator.resolve(), CodexExecutableLocator.fallbackPaths[1])
+        XCTAssertEqual(try locator.resolve(), expectedPath)
     }
 
     func testResolveChecksDuplicateCandidateOnlyOnce() throws {
@@ -80,6 +82,17 @@ final class CodexExecutableLocatorTests: XCTestCase {
             XCTAssertEqual(checkedPaths, [dynamicPath] + CodexExecutableLocator.fallbackPaths)
             XCTAssertTrue(error.localizedDescription.contains("ChatGPT"))
             XCTAssertTrue(error.localizedDescription.contains("Codex"))
+            XCTAssertTrue(error.localizedDescription.contains(dynamicPath))
+            XCTAssertTrue(
+                error.localizedDescription.contains(
+                    "/Applications/ChatGPT.app/Contents/Resources/codex"
+                )
+            )
+            XCTAssertTrue(
+                error.localizedDescription.contains(
+                    "/Applications/Codex.app/Contents/Resources/codex"
+                )
+            )
         }
     }
 }
