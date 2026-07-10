@@ -1,7 +1,7 @@
 import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private lazy var statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let popover = NSPopover()
     private let viewController = QuotaViewController()
     private let fetcher = CodexRateLimitFetcher()
@@ -23,6 +23,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func configureStatusItem() {
+        statusItem.autosaveName = "CodexQuotaBar.menuBarItem.v2"
+        statusItem.isVisible = true
+
         guard let button = statusItem.button else {
             return
         }
