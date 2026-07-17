@@ -1,6 +1,22 @@
 import AppKit
 
 enum StatusBarProgressRenderer {
+    static func miniImage(fiveHourPercent: Double?, weeklyPercent: Double?, appearance: NSAppearance?) -> NSImage {
+        makeImage(size: NSSize(width: 28, height: 18), appearance: appearance) {
+            NSGraphicsContext.current?.imageInterpolation = .high
+            drawMiniRow(percent: fiveHourPercent, y: 10)
+            drawMiniRow(percent: weeklyPercent, y: 3)
+        }
+    }
+
+    static func compactImage(fiveHourPercent: Double?, weeklyPercent: Double?, appearance: NSAppearance?) -> NSImage {
+        makeImage(size: NSSize(width: 74, height: 18), appearance: appearance) {
+            NSGraphicsContext.current?.imageInterpolation = .high
+            drawCompactRow(label: "5h", percent: fiveHourPercent, y: 10)
+            drawCompactRow(label: "W", percent: weeklyPercent, y: 1)
+        }
+    }
+
     static func singleImage(percent: Double?, appearance: NSAppearance?) -> NSImage {
         makeImage(size: NSSize(width: 94, height: 18), appearance: appearance) {
             let remaining = percent.map { min(100, max(0, $0)) }
@@ -43,6 +59,17 @@ enum StatusBarProgressRenderer {
         drawLabel(text: label, rect: NSRect(x: 1, y: y - 1, width: 15, height: 8))
         drawBar(percent: remaining, rect: NSRect(x: 18, y: y + 1, width: 63, height: 5))
         drawPercent(remaining, rect: NSRect(x: 85, y: y - 1, width: 32, height: 8))
+    }
+
+    private static func drawCompactRow(label: String, percent: Double?, y: CGFloat) {
+        let remaining = percent.map { min(100, max(0, $0)) }
+        drawLabel(text: label, rect: NSRect(x: 1, y: y - 1, width: 15, height: 8))
+        drawBar(percent: remaining, rect: NSRect(x: 18, y: y + 1, width: 54, height: 5))
+    }
+
+    private static func drawMiniRow(percent: Double?, y: CGFloat) {
+        let remaining = percent.map { min(100, max(0, $0)) }
+        drawBar(percent: remaining, rect: NSRect(x: 2, y: y, width: 24, height: 5))
     }
 
     private static func drawLabel(text: String, rect: NSRect) {

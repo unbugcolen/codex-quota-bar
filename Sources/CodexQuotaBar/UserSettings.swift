@@ -1,12 +1,18 @@
 import Foundation
 
 enum StatusDisplayMode: String, CaseIterable {
+    case miniProgress
+    case compactProgress
     case singleProgress
     case dualProgress = "progress"
     case text
 
     var title: String {
         switch self {
+        case .miniProgress:
+            return "迷你文字"
+        case .compactProgress:
+            return "紧凑进度"
         case .singleProgress:
             return "单条进度"
         case .dualProgress:
@@ -25,7 +31,7 @@ struct UserSettings {
 
     static func load(defaults: UserDefaults = .standard) -> UserSettings {
         let mode = defaults.string(forKey: Keys.statusDisplayMode)
-            .flatMap(StatusDisplayMode.init(rawValue:)) ?? .dualProgress
+            .flatMap(StatusDisplayMode.init(rawValue:)) ?? .miniProgress
         let interval = defaults.double(forKey: Keys.refreshIntervalSeconds)
         return UserSettings(
             statusDisplayMode: mode,

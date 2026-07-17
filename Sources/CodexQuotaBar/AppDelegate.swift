@@ -1,13 +1,24 @@
 import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private lazy var statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private lazy var statusItem: NSStatusItem = {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.autosaveName = StatusItemConfiguration.autosaveName
+        return item
+    }()
     private let popover = NSPopover()
     private let viewController = QuotaViewController()
     private let fetcher = CodexRateLimitFetcher()
     private var settings = UserSettings.load()
+    private lazy var statusMenu = StatusItemMenuFactory.build(
+        target: self,
+        refreshAction: #selector(refreshFromMenu),
+        settingsAction: #selector(settingsFromMenu),
+        quitAction: #selector(quitFromMenu)
+    )
     private var settingsWindowController: SettingsWindowController?
     private var refreshTimer: Timer?
+    private var sessionDidBecomeActiveObserver: NSObjectProtocol?
     private var isRefreshing = false
     private var lastSnapshot: QuotaSnapshot?
 
@@ -15,15 +26,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureStatusItem()
         configurePopover()
         configureRefreshTimer()
+        sessionDidBecomeActiveObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.sessionDidBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.scheduleNotchAdjustment()
+        }
         refresh()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         refreshTimer?.invalidate()
+        if let sessionDidBecomeActiveObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(sessionDidBecomeActiveObserver)
+        }
     }
 
     private func configureStatusItem() {
-        statusItem.autosaveName = "CodexQuotaBar.menuBarItem.v2"
         statusItem.isVisible = true
 
         guard let button = statusItem.button else {
@@ -32,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         applyStatusItemPlaceholder()
         button.target = self
         button.action = #selector(togglePopover)
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         button.toolTip = "Codex 额度"
     }
 
@@ -46,8 +67,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         viewController.onSettings = { [weak self] in
             self?.showSettings()
         }
-        viewController.onQuit = {
-            NSApplication.shared.terminate(nil)
+        viewController.onQuit = { [weak self] in
+            self?.quitFromMenu()
         }
     }
 
@@ -63,6 +84,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        if NSApp.currentEvent?.type == .rightMouseUp {
+            showStatusMenu()
+            return
+        }
+
         if popover.isShown {
             popover.performClose(nil)
         } else {
@@ -70,6 +96,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             popover.contentViewController?.view.window?.makeKey()
             viewController.focusForTouchBar()
         }
+    }
+
+    private func showStatusMenu() {
+        statusItem.menu = statusMenu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    @objc private func refreshFromMenu() {
+        popover.performClose(nil)
+        refresh()
+    }
+
+    @objc private func settingsFromMenu() {
+        popover.performClose(nil)
+        showSettings()
+    }
+
+    @objc private func quitFromMenu() {
+        NSApplication.shared.terminate(nil)
     }
 
     private func refresh() {
@@ -121,8 +167,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let compactPercent = [fiveHour, weekly].compactMap { $0 }.min()
 
         switch settings.statusDisplayMode {
+        case .miniProgress:
+            statusItem.length = 34
+            button.alignment = .right
+            button.image = nil
+            button.imagePosition = .noImage
+            if let compactPercent {
+                button.title = "\(Int(round(compactPercent)))%"
+            } else {
+                button.title = isError ? "!" : "--"
+            }
+        case .compactProgress:
+            statusItem.length = 78
+            button.alignment = .center
+            button.title = ""
+            button.image = StatusBarProgressRenderer.compactImage(
+                fiveHourPercent: fiveHour,
+                weeklyPercent: weekly,
+                appearance: button.effectiveAppearance
+            )
+            button.imagePosition = .imageOnly
         case .singleProgress:
             statusItem.length = 98
+            button.alignment = .center
             button.title = ""
             button.image = StatusBarProgressRenderer.singleImage(
                 percent: compactPercent,
@@ -131,6 +198,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.imagePosition = .imageOnly
         case .dualProgress:
             statusItem.length = 122
+            button.alignment = .center
             button.title = ""
             button.image = StatusBarProgressRenderer.image(
                 fiveHourPercent: fiveHour,
@@ -140,6 +208,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.imagePosition = .imageOnly
         case .text:
             statusItem.length = NSStatusItem.variableLength
+            button.alignment = .center
             button.image = nil
             button.imagePosition = .noImage
             if let compactPercent {
@@ -149,6 +218,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         button.setAccessibilityLabel(accessibilityStatus(fiveHour: fiveHour, weekly: weekly, isError: isError))
+        scheduleNotchAdjustment()
+    }
+
+    private func scheduleNotchAdjustment() {
+        guard settings.statusDisplayMode == .miniProgress else {
+            return
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.adjustMiniStatusItemForCameraHousing()
+        }
+    }
+
+    private func adjustMiniStatusItemForCameraHousing() {
+        guard settings.statusDisplayMode == .miniProgress,
+              let window = statusItem.button?.window,
+              let screen = window.screen else {
+            return
+        }
+        statusItem.length = StatusItemConfiguration.visibleLength(
+            baseLength: 34,
+            itemFrame: window.frame,
+            leftSafeArea: screen.auxiliaryTopLeftArea,
+            rightSafeArea: screen.auxiliaryTopRightArea
+        )
     }
 
     private func accessibilityStatus(fiveHour: Double?, weekly: Double?, isError: Bool) -> String {
