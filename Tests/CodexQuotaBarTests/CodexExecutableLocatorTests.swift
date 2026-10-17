@@ -4,7 +4,7 @@ import XCTest
 final class CodexExecutableLocatorTests: XCTestCase {
     func testResolvePrefersLaunchServicesApplication() throws {
         let applicationPath = "/Users/test/Applications/ChatGPT.app"
-        let executablePath = applicationPath + "/Contents/Resources/codex"
+        let executablePath = applicationPath + "/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
         var checkedPaths: [String] = []
 
         let locator = CodexExecutableLocator(
@@ -20,6 +20,51 @@ final class CodexExecutableLocatorTests: XCTestCase {
 
         XCTAssertEqual(try locator.resolve(), executablePath)
         XCTAssertEqual(checkedPaths, [executablePath])
+    }
+
+    func testResolveSupportsMovedApplicationWrapper() throws {
+        let applicationPath = "/Moved/ChatGPT.app"
+        let executablePath = applicationPath + "/Contents/Resources/codex-cli/bin/codex"
+        let locator = CodexExecutableLocator(
+            applicationURL: { _ in URL(fileURLWithPath: applicationPath) },
+            isExecutable: { $0 == executablePath }
+        )
+
+        XCTAssertEqual(try locator.resolve(), executablePath)
+    }
+
+    func testResolveSupportsMovedApplicationLegacyLayout() throws {
+        let applicationPath = "/Moved/Codex.app"
+        let executablePath = applicationPath + "/Contents/Resources/codex"
+        let locator = CodexExecutableLocator(
+            applicationURL: { _ in URL(fileURLWithPath: applicationPath) },
+            isExecutable: { $0 == executablePath }
+        )
+
+        XCTAssertEqual(try locator.resolve(), executablePath)
+    }
+
+    func testResolveFallsBackToNewChatGPTStandardPath() throws {
+        let expectedPath = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
+        let locator = CodexExecutableLocator(
+            applicationURL: { _ in nil },
+            isExecutable: { $0 == expectedPath }
+        )
+
+        XCTAssertEqual(try locator.resolve(), expectedPath)
+    }
+
+    func testResolvePrefersSignedCLIOverWrapperAndLegacyCLI() throws {
+        let applicationPath = "/Moved/ChatGPT.app"
+        let locator = CodexExecutableLocator(
+            applicationURL: { _ in URL(fileURLWithPath: applicationPath) },
+            isExecutable: { $0.hasPrefix(applicationPath + "/Contents/Resources/") }
+        )
+
+        XCTAssertEqual(
+            try locator.resolve(),
+            applicationPath + "/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
+        )
     }
 
     func testResolveFallsBackToChatGPTStandardPath() throws {
@@ -56,17 +101,21 @@ final class CodexExecutableLocatorTests: XCTestCase {
             },
             isExecutable: { path in
                 checkedPaths.append(path)
-                return path == CodexExecutableLocator.fallbackPaths[1]
+                return path == "/Applications/Codex.app/Contents/Resources/codex"
             }
         )
 
-        XCTAssertEqual(try locator.resolve(), CodexExecutableLocator.fallbackPaths[1])
+        XCTAssertEqual(try locator.resolve(), "/Applications/Codex.app/Contents/Resources/codex")
         XCTAssertEqual(checkedPaths, CodexExecutableLocator.fallbackPaths)
     }
 
     func testResolveFailureListsEveryCheckedPath() {
         let applicationPath = "/Moved/ChatGPT.app"
-        let dynamicPath = applicationPath + "/Contents/Resources/codex"
+        let dynamicPaths = [
+            applicationPath + "/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+            applicationPath + "/Contents/Resources/codex-cli/bin/codex",
+            applicationPath + "/Contents/Resources/codex"
+        ]
         let locator = CodexExecutableLocator(
             applicationURL: { _ in
                 URL(fileURLWithPath: applicationPath)
@@ -79,10 +128,12 @@ final class CodexExecutableLocatorTests: XCTestCase {
                 return XCTFail("Expected notFound error, got \(error)")
             }
 
-            XCTAssertEqual(checkedPaths, [dynamicPath] + CodexExecutableLocator.fallbackPaths)
+            XCTAssertEqual(checkedPaths, dynamicPaths + CodexExecutableLocator.fallbackPaths)
             XCTAssertTrue(error.localizedDescription.contains("ChatGPT"))
             XCTAssertTrue(error.localizedDescription.contains("Codex"))
-            XCTAssertTrue(error.localizedDescription.contains(dynamicPath))
+            for path in dynamicPaths {
+                XCTAssertTrue(error.localizedDescription.contains(path))
+            }
             XCTAssertTrue(
                 error.localizedDescription.contains(
                     "/Applications/ChatGPT.app/Contents/Resources/codex"

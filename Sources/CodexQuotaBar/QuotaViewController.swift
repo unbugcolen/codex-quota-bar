@@ -7,6 +7,17 @@ final class QuotaRootView: NSView {
         true
     }
 
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.windowBackgroundColor.setFill()
+        dirtyRect.fill()
+        super.draw(dirtyRect)
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
     override func makeTouchBar() -> NSTouchBar? {
         touchBarProvider?()
     }
@@ -25,23 +36,42 @@ final class QuotaViewController: NSViewController, NSTouchBarDelegate {
     private let quitButton = NSButton()
     private var snapshot: QuotaSnapshot?
     private var isRefreshing = false
+    private var showsFiveHourQuota = true
+    private var heightConstraint: NSLayoutConstraint?
+
+    var contentSize: NSSize {
+        let additionalHeight = showsFiveHourQuota ? fiveHourRow.preferredHeight + 16 : 0
+        return NSSize(width: 320, height: 100 + weeklyRow.preferredHeight + additionalHeight)
+    }
 
     override func loadView() {
-        let rootView = QuotaRootView(frame: NSRect(x: 0, y: 0, width: 420, height: 174))
+        let rootView = QuotaRootView(frame: NSRect(origin: .zero, size: contentSize))
         rootView.touchBarProvider = { [weak self] in
             self?.buildTouchBar()
         }
         view = rootView
         buildContent(in: rootView)
         applyPlaceholder()
+        fiveHourRow.isHidden = !showsFiveHourQuota
+        updateContentSize()
+    }
+
+    func setShowsFiveHourQuota(_ showsFiveHourQuota: Bool) {
+        self.showsFiveHourQuota = showsFiveHourQuota
+        _ = view
+        fiveHourRow.isHidden = !showsFiveHourQuota
+        updateContentSize()
+        refreshTouchBar()
     }
 
     func apply(snapshot: QuotaSnapshot) {
+        _ = view
         self.snapshot = snapshot
         isRefreshing = false
 
         fiveHourRow.configure(title: snapshot.fiveHour.title, bucket: snapshot.fiveHour)
         weeklyRow.configure(title: snapshot.weekly.title, bucket: snapshot.weekly)
+        updateContentSize()
         statusLabel.stringValue = "更新 \(formatUpdatedAt(snapshot.updatedAt))"
         statusLabel.textColor = .secondaryLabelColor
         refreshButton.isEnabled = true
@@ -71,67 +101,91 @@ final class QuotaViewController: NSViewController, NSTouchBarDelegate {
 
     private func buildContent(in rootView: NSView) {
         let titleLabel = NSTextField(labelWithString: "Codex 额度")
-        titleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
+        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
 
         settingsButton.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "设置")
-        settingsButton.bezelStyle = .texturedRounded
         settingsButton.target = self
         settingsButton.action = #selector(settingsTapped)
         settingsButton.toolTip = "设置"
 
         refreshButton.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "刷新")
-        refreshButton.bezelStyle = .texturedRounded
         refreshButton.target = self
         refreshButton.action = #selector(refreshTapped)
         refreshButton.toolTip = "刷新额度"
 
-        quitButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "退出")
-        quitButton.bezelStyle = .texturedRounded
+        for button in [settingsButton, refreshButton] {
+            button.isBordered = false
+            button.focusRingType = .none
+            button.contentTintColor = .secondaryLabelColor
+            button.image = button.image?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .regular))
+        }
+
+        quitButton.title = "退出"
+        quitButton.font = .systemFont(ofSize: 10.5)
+        quitButton.isBordered = false
+        quitButton.focusRingType = .none
+        quitButton.contentTintColor = .secondaryLabelColor
         quitButton.target = self
         quitButton.action = #selector(quitTapped)
         quitButton.toolTip = "退出"
 
-        let header = NSStackView(views: [titleLabel, NSView(), settingsButton, refreshButton, quitButton])
+        let header = NSStackView(views: [titleLabel, NSView(), settingsButton, refreshButton])
         header.orientation = .horizontal
         header.alignment = .centerY
-        header.spacing = 8
+        header.spacing = 6
         header.translatesAutoresizingMaskIntoConstraints = false
 
         let rows = NSStackView(views: [fiveHourRow, weeklyRow])
         rows.orientation = .vertical
         rows.alignment = .leading
-        rows.spacing = 10
+        rows.spacing = 16
         rows.translatesAutoresizingMaskIntoConstraints = false
 
-        statusLabel.font = .systemFont(ofSize: 11)
+        statusLabel.font = .systemFont(ofSize: 10.5)
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.lineBreakMode = .byTruncatingMiddle
         statusLabel.setContentCompressionResistancePriority(.required, for: .vertical)
         statusLabel.setContentHuggingPriority(.required, for: .vertical)
 
-        let content = NSStackView(views: [header, rows, statusLabel])
+        let footer = NSStackView(views: [statusLabel, NSView(), quitButton])
+        footer.orientation = .horizontal
+        footer.alignment = .centerY
+        footer.translatesAutoresizingMaskIntoConstraints = false
+
+        let content = NSStackView(views: [header, rows, footer])
         content.orientation = .vertical
         content.alignment = .leading
-        content.spacing = 10
-        content.setCustomSpacing(8, after: rows)
+        content.spacing = 18
+        content.setCustomSpacing(16, after: rows)
         content.translatesAutoresizingMaskIntoConstraints = false
         rootView.addSubview(content)
 
+        let heightConstraint = rootView.heightAnchor.constraint(equalToConstant: contentSize.height)
+        self.heightConstraint = heightConstraint
         NSLayoutConstraint.activate([
-            rootView.widthAnchor.constraint(equalToConstant: 420),
-            rootView.heightAnchor.constraint(equalToConstant: 174),
+            rootView.widthAnchor.constraint(equalToConstant: 320),
+            heightConstraint,
             content.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 16),
             content.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -16),
-            content.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 14),
+            content.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 16),
             content.bottomAnchor.constraint(equalTo: rootView.bottomAnchor, constant: -12),
             header.widthAnchor.constraint(equalTo: content.widthAnchor),
+            header.heightAnchor.constraint(equalToConstant: 22),
             rows.widthAnchor.constraint(equalTo: content.widthAnchor),
-            statusLabel.widthAnchor.constraint(equalTo: content.widthAnchor),
-            statusLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 16),
-            settingsButton.widthAnchor.constraint(equalToConstant: 26),
-            refreshButton.widthAnchor.constraint(equalToConstant: 26),
-            quitButton.widthAnchor.constraint(equalToConstant: 26)
+            fiveHourRow.widthAnchor.constraint(equalTo: rows.widthAnchor),
+            weeklyRow.widthAnchor.constraint(equalTo: rows.widthAnchor),
+            footer.widthAnchor.constraint(equalTo: content.widthAnchor),
+            footer.heightAnchor.constraint(equalToConstant: 16),
+            settingsButton.widthAnchor.constraint(equalToConstant: 22),
+            settingsButton.heightAnchor.constraint(equalToConstant: 22),
+            refreshButton.widthAnchor.constraint(equalToConstant: 22),
+            refreshButton.heightAnchor.constraint(equalToConstant: 22)
         ])
+    }
+
+    private func updateContentSize() {
+        heightConstraint?.constant = contentSize.height
+        preferredContentSize = contentSize
     }
 
     private func applyPlaceholder() {
@@ -154,7 +208,7 @@ final class QuotaViewController: NSViewController, NSTouchBarDelegate {
     private func formatUpdatedAt(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = .current
-        formatter.timeStyle = .medium
+        formatter.timeStyle = .short
         formatter.dateStyle = .none
         return formatter.string(from: date)
     }
@@ -169,19 +223,23 @@ final class QuotaViewController: NSViewController, NSTouchBarDelegate {
     private func buildTouchBar() -> NSTouchBar {
         let touchBar = NSTouchBar()
         touchBar.delegate = self
-        touchBar.defaultItemIdentifiers = [
-            .codexFiveHourQuota,
-            .fixedSpaceSmall,
+        var identifiers: [NSTouchBarItem.Identifier] = []
+        if showsFiveHourQuota {
+            identifiers += [.codexFiveHourQuota, .fixedSpaceSmall]
+        }
+        identifiers += [
             .codexWeeklyQuota,
             .flexibleSpace,
             .codexRefresh
         ]
+        touchBar.defaultItemIdentifiers = identifiers
         return touchBar
     }
 
     func touchBar(_ touchBar: NSTouchBar, makeItemForIdentifier identifier: NSTouchBarItem.Identifier) -> NSTouchBarItem? {
         switch identifier {
         case .codexFiveHourQuota:
+            guard showsFiveHourQuota else { return nil }
             return quotaTouchBarItem(identifier: identifier, bucket: snapshot?.fiveHour, fallbackTitle: "5小时")
         case .codexWeeklyQuota:
             return quotaTouchBarItem(identifier: identifier, bucket: snapshot?.weekly, fallbackTitle: "周限额")

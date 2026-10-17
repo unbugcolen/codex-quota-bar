@@ -1,4 +1,5 @@
 import Foundation
+import CFNetwork
 
 final class CodexRateLimitFetcher {
     private let resolveExecutable: () throws -> String
@@ -17,6 +18,49 @@ final class CodexRateLimitFetcher {
             }
         }
     }
+
+    static func appServerEnvironment(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        proxySettings: [String: Any]? = CFNetworkCopySystemProxySettings()?.takeRetainedValue() as? [String: Any]
+    ) -> [String: String] {
+        var environment = environment
+        guard environment["ALL_PROXY"] == nil, environment["all_proxy"] == nil,
+              let proxySettings else {
+            return environment
+        }
+
+        var addedSystemProxy = false
+        for scheme in ["HTTP", "HTTPS"] {
+            let key = scheme + "_PROXY"
+            guard environment[key] == nil, environment[key.lowercased()] == nil,
+                  (proxySettings[scheme + "Enable"] as? NSNumber)?.boolValue == true,
+                  let host = proxySettings[scheme + "Proxy"] as? String, !host.isEmpty,
+                  let port = proxySettings[scheme + "Port"] as? Int, (1...65_535).contains(port) else {
+                continue
+            }
+
+            var proxyURL = URLComponents()
+            proxyURL.scheme = "http"
+            proxyURL.host = host
+            proxyURL.port = port
+            if let url = proxyURL.url {
+                environment[key] = url.absoluteString
+                addedSystemProxy = true
+            }
+        }
+
+        if addedSystemProxy, environment["NO_PROXY"] == nil, environment["no_proxy"] == nil,
+           let exceptions = proxySettings["ExceptionsList"] as? [String], !exceptions.isEmpty {
+            let hosts = exceptions.filter { $0 != "<local>" }.map {
+                $0.hasPrefix("*.") ? String($0.dropFirst()) : $0
+            }
+            if !hosts.isEmpty {
+                environment["NO_PROXY"] = hosts.joined(separator: ",")
+            }
+        }
+
+        return environment
+    }
 }
 
 private final class RateLimitFetchOperation {
@@ -32,6 +76,7 @@ private final class RateLimitFetchOperation {
     private var stdoutBuffer = Data()
     private var stderrText = ""
     private var didFinish = false
+    private var didInitialize = false
 
     init(executablePath: String, completion: @escaping (Result<QuotaSnapshot, Error>) -> Void) {
         self.executablePath = executablePath
@@ -55,6 +100,7 @@ private final class RateLimitFetchOperation {
 
         process.executableURL = URL(fileURLWithPath: executablePath)
         process.arguments = ["app-server", "--listen", "stdio://"]
+        process.environment = CodexRateLimitFetcher.appServerEnvironment()
         process.standardInput = stdin
         process.standardOutput = stdout
         process.standardError = stderr
@@ -98,7 +144,7 @@ private final class RateLimitFetchOperation {
             return
         }
 
-        sendRequests(to: stdin.fileHandleForWriting)
+        sendInitialize(to: stdin.fileHandleForWriting)
 
         queue.asyncAfter(deadline: .now() + timeout) { [self] in
             guard !self.didFinish else {
@@ -108,15 +154,28 @@ private final class RateLimitFetchOperation {
         }
     }
 
-    private func sendRequests(to input: FileHandle) {
+    private func sendInitialize(to input: FileHandle) {
         let initialize = #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"codex-quota-bar","version":"0.1.0","title":"Codex Quota Bar"},"capabilities":{"optOutNotificationMethods":["account/rateLimits/updated","account/updated","remoteControl/status/changed"]}}}"# + "\n"
-        let read = #"{"jsonrpc":"2.0","id":2,"method":"account/rateLimits/read","params":null}"# + "\n"
 
         do {
             try input.write(contentsOf: Data(initialize.utf8))
-            try input.write(contentsOf: Data(read.utf8))
         } catch {
             finish(.failure(error))
+        }
+    }
+
+    private func sendReadRequest() {
+        guard let input = standardInput?.fileHandleForWriting else {
+            finishOnQueue(.failure(FetchError.malformedResponse))
+            return
+        }
+        let initialized = #"{"jsonrpc":"2.0","method":"initialized","params":{}}"# + "\n"
+        let read = #"{"jsonrpc":"2.0","id":2,"method":"account/rateLimits/read","params":null}"# + "\n"
+        do {
+            try input.write(contentsOf: Data(initialized.utf8))
+            try input.write(contentsOf: Data(read.utf8))
+        } catch {
+            finishOnQueue(.failure(error))
         }
     }
 
@@ -133,7 +192,7 @@ private final class RateLimitFetchOperation {
     }
 
     private func handleStdoutLine(_ lineData: Data) {
-        guard !lineData.isEmpty else {
+        guard !didFinish, !lineData.isEmpty else {
             return
         }
 
@@ -144,10 +203,19 @@ private final class RateLimitFetchOperation {
             return
         }
 
-        guard id == 2 else {
-            if id == 1, object["error"] != nil {
-                finishOnQueue(.failure(FetchError.rpcError("initialize failed: \(object)")))
+        if id == 1, !didInitialize {
+            if let error = object["error"] {
+                finishOnQueue(.failure(FetchError.rpcError("initialize failed: \(error)")))
+            } else if object["result"] is [String: Any] {
+                didInitialize = true
+                sendReadRequest()
+            } else {
+                finishOnQueue(.failure(FetchError.malformedResponse))
             }
+            return
+        }
+
+        guard id == 2 else {
             return
         }
 

@@ -3,10 +3,15 @@ import Foundation
 
 struct CodexExecutableLocator {
     static let bundleIdentifier = "com.openai.codex"
-    static let fallbackPaths = [
-        "/Applications/ChatGPT.app/Contents/Resources/codex",
-        "/Applications/Codex.app/Contents/Resources/codex"
+    static let relativeExecutablePaths = [
+        "Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+        "Contents/Resources/codex-cli/bin/codex",
+        "Contents/Resources/codex"
     ]
+    static let fallbackPaths = ["/Applications/ChatGPT.app", "/Applications/Codex.app"]
+        .flatMap { applicationPath in
+            relativeExecutablePaths.map { applicationPath + "/" + $0 }
+        }
 
     private let applicationURL: (String) -> URL?
     private let isExecutable: (String) -> Bool
@@ -27,11 +32,9 @@ struct CodexExecutableLocator {
         var candidatePaths: [String] = []
 
         if let applicationURL = applicationURL(Self.bundleIdentifier) {
-            let executableURL = applicationURL
-                .appendingPathComponent("Contents", isDirectory: true)
-                .appendingPathComponent("Resources", isDirectory: true)
-                .appendingPathComponent("codex", isDirectory: false)
-            candidatePaths.append(executableURL.path)
+            candidatePaths.append(contentsOf: Self.relativeExecutablePaths.map {
+                applicationURL.appendingPathComponent($0).path
+            })
         }
 
         candidatePaths.append(contentsOf: Self.fallbackPaths)

@@ -2,9 +2,14 @@ import AppKit
 
 final class QuotaRowView: NSView {
     private let titleLabel = NSTextField(labelWithString: "")
-    private let batteryView = SegmentedBatteryView()
+    private let progressView = QuotaProgressView()
+    private let remainingLabel = NSTextField(labelWithString: "剩余")
     private let percentLabel = NSTextField(labelWithString: "--")
     private let resetLabel = NSTextField(labelWithString: "--")
+    private var hasQuota = false
+    private var heightConstraint: NSLayoutConstraint?
+
+    var preferredHeight: CGFloat { hasQuota ? 52 : 20 }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -18,46 +23,62 @@ final class QuotaRowView: NSView {
 
     func configure(title: String, bucket: QuotaBucket?) {
         titleLabel.stringValue = title
-        batteryView.remainingPercent = bucket?.remainingPercent
-        percentLabel.stringValue = formatPercent(bucket?.remainingPercent)
+        hasQuota = bucket?.remainingPercent != nil
+        titleLabel.textColor = hasQuota ? .labelColor : .secondaryLabelColor
+        progressView.remainingPercent = bucket?.remainingPercent
+        progressView.isHidden = !hasQuota
+        remainingLabel.isHidden = !hasQuota
+        resetLabel.isHidden = !hasQuota
+        percentLabel.stringValue = bucket == nil ? "--" : formatPercent(bucket?.remainingPercent)
+        percentLabel.font = hasQuota ? .monospacedDigitSystemFont(ofSize: 16, weight: .medium) : .systemFont(ofSize: 12)
+        percentLabel.textColor = hasQuota ? .labelColor : .tertiaryLabelColor
         resetLabel.stringValue = formatResetDate(bucket?.resetDate)
+        percentLabel.toolTip = hasQuota ? nil : (bucket == nil ? "等待刷新" : "当前账户未提供此额度")
+        heightConstraint?.constant = preferredHeight
     }
 
     private func build() {
         translatesAutoresizingMaskIntoConstraints = false
 
-        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        titleLabel.font = .systemFont(ofSize: 13, weight: .medium)
         titleLabel.textColor = .labelColor
         titleLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        percentLabel.font = .monospacedDigitSystemFont(ofSize: 16, weight: .semibold)
+        remainingLabel.font = .systemFont(ofSize: 10)
+        remainingLabel.textColor = .secondaryLabelColor
+        percentLabel.font = .monospacedDigitSystemFont(ofSize: 16, weight: .medium)
         percentLabel.alignment = .right
         percentLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        resetLabel.font = .systemFont(ofSize: 12)
+        resetLabel.font = .systemFont(ofSize: 11)
         resetLabel.textColor = .secondaryLabelColor
-        resetLabel.alignment = .right
         resetLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        let rightStack = NSStackView(views: [percentLabel, resetLabel])
-        rightStack.orientation = .vertical
-        rightStack.alignment = .trailing
-        rightStack.spacing = 3
-        rightStack.translatesAutoresizingMaskIntoConstraints = false
+        let value = NSStackView(views: [remainingLabel, percentLabel])
+        value.orientation = .horizontal
+        value.alignment = .firstBaseline
+        value.spacing = 5
 
-        let stack = NSStackView(views: [titleLabel, batteryView, rightStack])
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.spacing = 10
+        let heading = NSStackView(views: [titleLabel, NSView(), value])
+        heading.orientation = .horizontal
+        heading.alignment = .centerY
+
+        let stack = NSStackView(views: [heading, progressView, resetLabel])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
 
+        let heightConstraint = heightAnchor.constraint(equalToConstant: preferredHeight)
+        self.heightConstraint = heightConstraint
         NSLayoutConstraint.activate([
-            titleLabel.widthAnchor.constraint(equalToConstant: 52),
-            batteryView.widthAnchor.constraint(equalToConstant: 180),
-            batteryView.heightAnchor.constraint(equalToConstant: 18),
-            rightStack.widthAnchor.constraint(equalToConstant: 122),
-            heightAnchor.constraint(greaterThanOrEqualToConstant: 36),
+            heading.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            heading.heightAnchor.constraint(equalToConstant: 20),
+            progressView.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            progressView.heightAnchor.constraint(equalToConstant: 5),
+            resetLabel.heightAnchor.constraint(equalToConstant: 14),
+            heightConstraint,
             stack.leadingAnchor.constraint(equalTo: leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             stack.topAnchor.constraint(equalTo: topAnchor),
@@ -67,21 +88,19 @@ final class QuotaRowView: NSView {
 
     private func formatPercent(_ percent: Double?) -> String {
         guard let percent else {
-            return "--"
+            return "未提供"
         }
         return "\(Int(round(percent)))%"
     }
 
     private func formatResetDate(_ date: Date?) -> String {
         guard let date else {
-            return "重置 --"
+            return "重置时间未提供"
         }
 
         let formatter = DateFormatter()
-        formatter.locale = .current
-        formatter.doesRelativeDateFormatting = true
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return "重置 \(formatter.string(from: date))"
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "M月d日 HH:mm"
+        return "\(formatter.string(from: date)) 重置"
     }
 }

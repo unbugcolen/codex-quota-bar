@@ -26,6 +26,7 @@ enum StatusDisplayMode: String, CaseIterable {
 struct UserSettings {
     var statusDisplayMode: StatusDisplayMode
     var refreshIntervalSeconds: TimeInterval
+    var showsFiveHourQuota = true
 
     static let refreshIntervalOptions: [TimeInterval] = [60, 300, 600, 1_800]
 
@@ -33,15 +34,19 @@ struct UserSettings {
         let mode = defaults.string(forKey: Keys.statusDisplayMode)
             .flatMap(StatusDisplayMode.init(rawValue:)) ?? .miniProgress
         let interval = defaults.double(forKey: Keys.refreshIntervalSeconds)
+        let showsFiveHourQuota = defaults.object(forKey: Keys.showsFiveHourQuota) == nil
+            || defaults.bool(forKey: Keys.showsFiveHourQuota)
         return UserSettings(
             statusDisplayMode: mode,
-            refreshIntervalSeconds: interval > 0 ? interval : 300
+            refreshIntervalSeconds: interval > 0 ? interval : 300,
+            showsFiveHourQuota: showsFiveHourQuota
         )
     }
 
     func save(defaults: UserDefaults = .standard) {
         defaults.set(statusDisplayMode.rawValue, forKey: Keys.statusDisplayMode)
         defaults.set(refreshIntervalSeconds, forKey: Keys.refreshIntervalSeconds)
+        defaults.set(showsFiveHourQuota, forKey: Keys.showsFiveHourQuota)
     }
 
     static func title(for interval: TimeInterval) -> String {
@@ -62,5 +67,6 @@ struct UserSettings {
     private enum Keys {
         static let statusDisplayMode = "statusDisplayMode"
         static let refreshIntervalSeconds = "refreshIntervalSeconds"
+        static let showsFiveHourQuota = "showsFiveHourQuota"
     }
 }

@@ -58,7 +58,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func configurePopover() {
         popover.behavior = .transient
-        popover.contentSize = NSSize(width: 420, height: 174)
+        viewController.setShowsFiveHourQuota(settings.showsFiveHourQuota)
+        popover.contentSize = viewController.contentSize
         popover.contentViewController = viewController
 
         viewController.onRefresh = { [weak self] in
@@ -135,6 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .success(let snapshot):
                 self.lastSnapshot = snapshot
                 self.viewController.apply(snapshot: snapshot)
+                self.popover.contentSize = self.viewController.contentSize
                 self.updateStatusItem(with: snapshot)
             case .failure(let error):
                 self.viewController.apply(error: error)
@@ -162,7 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let fiveHour = snapshot?.fiveHour.remainingPercent
+        let fiveHour = settings.showsFiveHourQuota ? snapshot?.fiveHour.remainingPercent : nil
         let weekly = snapshot?.weekly.remainingPercent
         let compactPercent = [fiveHour, weekly].compactMap { $0 }.min()
 
@@ -178,14 +180,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 button.title = isError ? "!" : "--"
             }
         case .compactProgress:
-            statusItem.length = 78
+            statusItem.length = settings.showsFiveHourQuota ? 78 : 98
             button.alignment = .center
             button.title = ""
-            button.image = StatusBarProgressRenderer.compactImage(
-                fiveHourPercent: fiveHour,
-                weeklyPercent: weekly,
-                appearance: button.effectiveAppearance
-            )
+            if settings.showsFiveHourQuota {
+                button.image = StatusBarProgressRenderer.compactImage(
+                    fiveHourPercent: fiveHour,
+                    weeklyPercent: weekly,
+                    appearance: button.effectiveAppearance
+                )
+            } else {
+                button.image = StatusBarProgressRenderer.singleImage(
+                    percent: weekly,
+                    appearance: button.effectiveAppearance
+                )
+            }
             button.imagePosition = .imageOnly
         case .singleProgress:
             statusItem.length = 98
@@ -197,14 +206,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             button.imagePosition = .imageOnly
         case .dualProgress:
-            statusItem.length = 122
+            statusItem.length = settings.showsFiveHourQuota ? 122 : 98
             button.alignment = .center
             button.title = ""
-            button.image = StatusBarProgressRenderer.image(
-                fiveHourPercent: fiveHour,
-                weeklyPercent: weekly,
-                appearance: button.effectiveAppearance
-            )
+            if settings.showsFiveHourQuota {
+                button.image = StatusBarProgressRenderer.image(
+                    fiveHourPercent: fiveHour,
+                    weeklyPercent: weekly,
+                    appearance: button.effectiveAppearance
+                )
+            } else {
+                button.image = StatusBarProgressRenderer.singleImage(
+                    percent: weekly,
+                    appearance: button.effectiveAppearance
+                )
+            }
             button.imagePosition = .imageOnly
         case .text:
             statusItem.length = NSStatusItem.variableLength
@@ -248,10 +264,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if isError {
             return "Codex 额度读取失败"
         }
-        guard let fiveHour, let weekly else {
+        var quotas: [String] = []
+        if let fiveHour {
+            quotas.append("5 小时剩余 \(Int(round(fiveHour)))%")
+        }
+        if let weekly {
+            quotas.append("周限额剩余 \(Int(round(weekly)))%")
+        }
+        guard !quotas.isEmpty else {
             return "Codex 额度未刷新"
         }
-        return "Codex 额度，5 小时剩余 \(Int(round(fiveHour)))%，周限额剩余 \(Int(round(weekly)))%"
+        return "Codex 额度，" + quotas.joined(separator: "，")
     }
 
     private func showSettings() {
@@ -267,6 +290,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func apply(updatedSettings: UserSettings) {
         settings = updatedSettings
+        viewController.setShowsFiveHourQuota(settings.showsFiveHourQuota)
+        popover.contentSize = viewController.contentSize
         configureRefreshTimer()
         if let snapshot = lastSnapshot {
             updateStatusItem(with: snapshot)

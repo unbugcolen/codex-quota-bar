@@ -16,7 +16,7 @@ final class TouchBarQuotaView: NSView {
         titleLabel.textColor = .labelColor
         titleLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        let battery = SegmentedBatteryView()
+        let battery = QuotaProgressView()
         battery.remainingPercent = bucket?.remainingPercent
 
         let percentLabel = NSTextField(labelWithString: formatPercent(bucket?.remainingPercent))
@@ -35,7 +35,7 @@ final class TouchBarQuotaView: NSView {
             heightAnchor.constraint(equalToConstant: 30),
             titleLabel.widthAnchor.constraint(equalToConstant: 46),
             battery.widthAnchor.constraint(equalToConstant: 110),
-            battery.heightAnchor.constraint(equalToConstant: 16),
+            battery.heightAnchor.constraint(equalToConstant: 5),
             percentLabel.widthAnchor.constraint(equalToConstant: 38),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),

@@ -32,21 +32,15 @@ struct QuotaSnapshot {
 
     init(rateLimits: RateLimitSnapshot, now: Date = Date()) {
         let windows = [rateLimits.primary, rateLimits.secondary].compactMap { $0 }
-        let fiveHourWindow = QuotaSnapshot.window(closestTo: 300, in: windows) ?? rateLimits.primary
-        let weeklyWindow = QuotaSnapshot.window(closestTo: 10_080, in: windows) ?? rateLimits.secondary
+        let fiveHourWindow = windows.first { $0.windowDurationMins == 300 }
+            ?? rateLimits.primary.flatMap { $0.windowDurationMins == nil ? $0 : nil }
+        let weeklyWindow = windows.first { $0.windowDurationMins == 10_080 }
+            ?? rateLimits.secondary.flatMap { $0.windowDurationMins == nil ? $0 : nil }
 
         self.fiveHour = QuotaBucket(title: "5小时", window: fiveHourWindow)
         self.weekly = QuotaBucket(title: "周限额", window: weeklyWindow)
         self.planType = rateLimits.planType
         self.updatedAt = now
-    }
-
-    private static func window(closestTo minutes: Int, in windows: [RateLimitWindow]) -> RateLimitWindow? {
-        windows
-            .filter { $0.windowDurationMins != nil }
-            .min { lhs, rhs in
-                abs((lhs.windowDurationMins ?? minutes) - minutes) < abs((rhs.windowDurationMins ?? minutes) - minutes)
-            }
     }
 }
 

@@ -121,20 +121,9 @@ enum StatusBarProgressRenderer {
         let fillRect = NSRect(x: rect.minX, y: rect.minY, width: fillWidth, height: rect.height)
         NSGraphicsContext.saveGraphicsState()
         rounded.addClip()
-        color(for: percent).setFill()
+        QuotaProgressView.fillColor(for: percent).setFill()
         fillRect.fill()
         NSGraphicsContext.restoreGraphicsState()
-    }
-
-    private static func color(for percent: Double) -> NSColor {
-        switch percent {
-        case 50...:
-            return .systemGreen
-        case 20..<50:
-            return .systemOrange
-        default:
-            return .systemRed
-        }
     }
 
     private static var rightAlignedParagraphStyle: NSParagraphStyle {
