@@ -12,7 +12,8 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "CodexQuotaBar"
+            name: "CodexQuotaBar",
+            resources: [.process("Resources")]
         ),
         .testTarget(
             name: "CodexQuotaBarTests",

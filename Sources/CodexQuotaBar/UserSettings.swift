@@ -23,10 +23,28 @@ enum StatusDisplayMode: String, CaseIterable {
     }
 }
 
+enum StatusBarBranding: String, CaseIterable {
+    case codexText
+    case chatGPTIcon
+    case hidden
+
+    var title: String {
+        switch self {
+        case .codexText:
+            return "Codex 文字"
+        case .chatGPTIcon:
+            return "ChatGPT 图标"
+        case .hidden:
+            return "隐藏"
+        }
+    }
+}
+
 struct UserSettings {
     var statusDisplayMode: StatusDisplayMode
     var refreshIntervalSeconds: TimeInterval
     var showsFiveHourQuota = true
+    var statusBarBranding: StatusBarBranding = .codexText
 
     static let refreshIntervalOptions: [TimeInterval] = [60, 300, 600, 1_800]
 
@@ -36,10 +54,13 @@ struct UserSettings {
         let interval = defaults.double(forKey: Keys.refreshIntervalSeconds)
         let showsFiveHourQuota = defaults.object(forKey: Keys.showsFiveHourQuota) == nil
             || defaults.bool(forKey: Keys.showsFiveHourQuota)
+        let branding = defaults.string(forKey: Keys.statusBarBranding)
+            .flatMap(StatusBarBranding.init(rawValue:)) ?? .codexText
         return UserSettings(
             statusDisplayMode: mode,
             refreshIntervalSeconds: interval > 0 ? interval : 300,
-            showsFiveHourQuota: showsFiveHourQuota
+            showsFiveHourQuota: showsFiveHourQuota,
+            statusBarBranding: branding
         )
     }
 
@@ -47,6 +68,7 @@ struct UserSettings {
         defaults.set(statusDisplayMode.rawValue, forKey: Keys.statusDisplayMode)
         defaults.set(refreshIntervalSeconds, forKey: Keys.refreshIntervalSeconds)
         defaults.set(showsFiveHourQuota, forKey: Keys.showsFiveHourQuota)
+        defaults.set(statusBarBranding.rawValue, forKey: Keys.statusBarBranding)
     }
 
     static func title(for interval: TimeInterval) -> String {
@@ -68,5 +90,6 @@ struct UserSettings {
         static let statusDisplayMode = "statusDisplayMode"
         static let refreshIntervalSeconds = "refreshIntervalSeconds"
         static let showsFiveHourQuota = "showsFiveHourQuota"
+        static let statusBarBranding = "statusBarBranding"
     }
 }

@@ -5,7 +5,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     var onChange: ((UserSettings) -> Void)?
 
     private var settings: UserSettings
+    private let defaults: UserDefaults
     private let modePopup = NSPopUpButton()
+    private let brandingPopup = NSPopUpButton()
     private let intervalPopup = NSPopUpButton()
     private let fiveHourCheckbox = NSButton(checkboxWithTitle: "显示 5 小时额度", target: nil, action: nil)
     private let launchAtLoginCheckbox = NSButton(checkboxWithTitle: "开机自动启动", target: nil, action: nil)
@@ -18,16 +20,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     init(
         settings: UserSettings,
+        defaults: UserDefaults = .standard,
         loginItemStatus: @escaping () -> SMAppService.Status = { SMAppService.mainApp.status },
         registerLoginItem: @escaping () throws -> Void = { try SMAppService.mainApp.register() },
         unregisterLoginItem: @escaping () throws -> Void = { try SMAppService.mainApp.unregister() }
     ) {
         self.settings = settings
+        self.defaults = defaults
         self.loginItemStatus = loginItemStatus
         self.registerLoginItem = registerLoginItem
         self.unregisterLoginItem = unregisterLoginItem
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 340, height: 232),
+            contentRect: NSRect(x: 0, y: 0, width: 340, height: 270),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -64,6 +68,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         let modeLabel = NSTextField(labelWithString: "菜单栏显示")
         modeLabel.alignment = .right
+        let brandingLabel = NSTextField(labelWithString: "状态栏标识")
+        brandingLabel.alignment = .right
         let intervalLabel = NSTextField(labelWithString: "自动刷新")
         intervalLabel.alignment = .right
         let quotaLabel = NSTextField(labelWithString: "显示项目")
@@ -74,6 +80,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         modePopup.addItems(withTitles: StatusDisplayMode.allCases.map(\.title))
         modePopup.target = self
         modePopup.action = #selector(modeChanged)
+
+        brandingPopup.addItems(withTitles: StatusBarBranding.allCases.map(\.title))
+        brandingPopup.target = self
+        brandingPopup.action = #selector(brandingChanged)
+        brandingPopup.toolTip = "更换单条进度和文字模式中的 Codex 标识"
 
         intervalPopup.addItems(withTitles: UserSettings.refreshIntervalOptions.map(UserSettings.title(for:)))
         intervalPopup.target = self
@@ -106,6 +117,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         let grid = NSGridView(views: [
             [modeLabel, modePopup],
+            [brandingLabel, brandingPopup],
             [quotaLabel, fiveHourCheckbox],
             [intervalLabel, intervalPopup],
             [startupLabel, loginOptions]
@@ -113,7 +125,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         grid.column(at: 0).width = 84
         grid.column(at: 1).xPlacement = .fill
         grid.rowSpacing = 12
-        grid.row(at: 3).yPlacement = .top
+        grid.row(at: 4).yPlacement = .top
         grid.translatesAutoresizingMaskIntoConstraints = false
 
         let content = NSStackView(views: [titleLabel, grid])
@@ -128,6 +140,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             content.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -20),
             content.topAnchor.constraint(equalTo: root.topAnchor, constant: 18),
             modePopup.widthAnchor.constraint(equalToConstant: 180),
+            brandingPopup.widthAnchor.constraint(equalToConstant: 180),
             intervalPopup.widthAnchor.constraint(equalToConstant: 180)
         ])
 
@@ -136,6 +149,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     private func applySettingsToControls() {
         modePopup.selectItem(withTitle: settings.statusDisplayMode.title)
+        brandingPopup.selectItem(withTitle: settings.statusBarBranding.title)
         fiveHourCheckbox.state = settings.showsFiveHourQuota ? .on : .off
         if let index = UserSettings.refreshIntervalOptions.firstIndex(of: settings.refreshIntervalSeconds) {
             intervalPopup.selectItem(at: index)
@@ -177,20 +191,27 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     @objc private func modeChanged() {
         let index = max(0, modePopup.indexOfSelectedItem)
         settings.statusDisplayMode = StatusDisplayMode.allCases[index]
-        settings.save()
+        settings.save(defaults: defaults)
         onChange?(settings)
     }
 
     @objc private func intervalChanged() {
         let index = max(0, intervalPopup.indexOfSelectedItem)
         settings.refreshIntervalSeconds = UserSettings.refreshIntervalOptions[index]
-        settings.save()
+        settings.save(defaults: defaults)
+        onChange?(settings)
+    }
+
+    @objc private func brandingChanged() {
+        let index = max(0, brandingPopup.indexOfSelectedItem)
+        settings.statusBarBranding = StatusBarBranding.allCases[index]
+        settings.save(defaults: defaults)
         onChange?(settings)
     }
 
     @objc private func fiveHourVisibilityChanged() {
         settings.showsFiveHourQuota = fiveHourCheckbox.state == .on
-        settings.save()
+        settings.save(defaults: defaults)
         onChange?(settings)
     }
 

@@ -180,7 +180,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 button.title = isError ? "!" : "--"
             }
         case .compactProgress:
-            statusItem.length = settings.showsFiveHourQuota ? 78 : 98
             button.alignment = .center
             button.title = ""
             if settings.showsFiveHourQuota {
@@ -192,21 +191,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 button.image = StatusBarProgressRenderer.singleImage(
                     percent: weekly,
+                    branding: settings.statusBarBranding,
                     appearance: button.effectiveAppearance
                 )
             }
+            statusItem.length = (button.image?.size.width ?? 0) + 4
             button.imagePosition = .imageOnly
         case .singleProgress:
-            statusItem.length = 98
             button.alignment = .center
             button.title = ""
             button.image = StatusBarProgressRenderer.singleImage(
                 percent: compactPercent,
+                branding: settings.statusBarBranding,
                 appearance: button.effectiveAppearance
             )
+            statusItem.length = (button.image?.size.width ?? 0) + 4
             button.imagePosition = .imageOnly
         case .dualProgress:
-            statusItem.length = settings.showsFiveHourQuota ? 122 : 98
             button.alignment = .center
             button.title = ""
             if settings.showsFiveHourQuota {
@@ -218,19 +219,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 button.image = StatusBarProgressRenderer.singleImage(
                     percent: weekly,
+                    branding: settings.statusBarBranding,
                     appearance: button.effectiveAppearance
                 )
             }
+            statusItem.length = (button.image?.size.width ?? 0) + 4
             button.imagePosition = .imageOnly
         case .text:
             statusItem.length = NSStatusItem.variableLength
             button.alignment = .center
-            button.image = nil
-            button.imagePosition = .noImage
+            let value: String
             if let compactPercent {
-                button.title = "Codex \(Int(round(compactPercent)))%"
+                value = "\(Int(round(compactPercent)))%"
             } else {
-                button.title = isError ? "Codex !" : "Codex --"
+                value = isError ? "!" : "--"
+            }
+            button.title = settings.statusBarBranding == .codexText ? "Codex \(value)" : value
+            if settings.statusBarBranding == .chatGPTIcon {
+                button.image = StatusBarProgressRenderer.chatGPTIcon()
+                button.imagePosition = .imageLeading
+            } else {
+                button.image = nil
+                button.imagePosition = .noImage
             }
         }
         button.setAccessibilityLabel(accessibilityStatus(fiveHour: fiveHour, weekly: weekly, isError: isError))

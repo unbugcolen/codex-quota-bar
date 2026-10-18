@@ -17,13 +17,41 @@ enum StatusBarProgressRenderer {
         }
     }
 
-    static func singleImage(percent: Double?, appearance: NSAppearance?) -> NSImage {
-        makeImage(size: NSSize(width: 94, height: 18), appearance: appearance) {
-            let remaining = percent.map { min(100, max(0, $0)) }
-            drawSingleLabel(text: "Codex", rect: NSRect(x: 0, y: 3, width: 36, height: 12))
-            drawSinglePercent(remaining, rect: NSRect(x: 72, y: 3, width: 22, height: 12))
-            drawBar(percent: remaining, rect: NSRect(x: 40, y: 6, width: 29, height: 6))
+    static func singleImage(
+        percent: Double?,
+        branding: StatusBarBranding = .codexText,
+        appearance: NSAppearance?
+    ) -> NSImage {
+        let prefixWidth: CGFloat
+        switch branding {
+        case .codexText: prefixWidth = 40
+        case .chatGPTIcon: prefixWidth = 22
+        case .hidden: prefixWidth = 0
         }
+        return makeImage(size: NSSize(width: prefixWidth + 64, height: 18), appearance: appearance) {
+            let remaining = percent.map { min(100, max(0, $0)) }
+            switch branding {
+            case .codexText:
+                drawSingleLabel(text: "Codex", rect: NSRect(x: 0, y: 3, width: 36, height: 12))
+            case .chatGPTIcon:
+                let rect = NSRect(x: 0, y: 1, width: 16, height: 16)
+                chatGPTIcon()?.draw(in: rect)
+                NSColor.labelColor.setFill()
+                rect.fill(using: .sourceAtop)
+            case .hidden:
+                break
+            }
+            drawSinglePercent(remaining, rect: NSRect(x: prefixWidth + 32, y: 3, width: 32, height: 12))
+            drawBar(percent: remaining, rect: NSRect(x: prefixWidth, y: 6, width: 29, height: 6))
+        }
+    }
+
+    static func chatGPTIcon() -> NSImage? {
+        let image = (Bundle.main.image(forResource: "chatgptTemplate")
+            ?? Bundle.module.image(forResource: "chatgptTemplate"))?.copy() as? NSImage
+        image?.size = NSSize(width: 16, height: 16)
+        image?.isTemplate = true
+        return image
     }
 
     static func image(fiveHourPercent: Double?, weeklyPercent: Double?, appearance: NSAppearance?) -> NSImage {

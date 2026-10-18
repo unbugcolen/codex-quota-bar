@@ -141,6 +141,47 @@ final class SettingsWindowControllerTests: XCTestCase {
         XCTAssertEqual(checkbox(in: controller).state, .on)
     }
 
+    func testBrandingSelectionImmediatelyNotifiesAndPersistsWithoutRegisteringLoginItem() throws {
+        let suiteName = "SettingsWindowControllerTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let loginItem = StubLoginItem(status: .notRegistered)
+        let controller = SettingsWindowController(
+            settings: UserSettings(
+                statusDisplayMode: .singleProgress,
+                refreshIntervalSeconds: 600,
+                showsFiveHourQuota: false,
+                statusBarBranding: .chatGPTIcon
+            ),
+            defaults: defaults,
+            loginItemStatus: { loginItem.status },
+            registerLoginItem: { try loginItem.register() },
+            unregisterLoginItem: { try loginItem.unregister() }
+        )
+        let popup = try XCTUnwrap(
+            descendants(controller.window!.contentView!).compactMap { $0 as? NSPopUpButton }
+                .first { $0.itemTitles == StatusBarBranding.allCases.map(\.title) }
+        )
+        XCTAssertEqual(popup.titleOfSelectedItem, StatusBarBranding.chatGPTIcon.title)
+        XCTAssertNil(defaults.string(forKey: "statusBarBranding"))
+        var changes: [StatusBarBranding] = []
+        controller.onChange = { changes.append($0.statusBarBranding) }
+
+        for branding in [StatusBarBranding.hidden, .codexText, .chatGPTIcon] {
+            popup.selectItem(withTitle: branding.title)
+            XCTAssertTrue(popup.sendAction(popup.action, to: popup.target))
+
+            let restored = UserSettings.load(defaults: defaults)
+            XCTAssertEqual(restored.statusBarBranding, branding)
+            XCTAssertEqual(restored.statusDisplayMode, .singleProgress)
+            XCTAssertEqual(restored.refreshIntervalSeconds, 600)
+            XCTAssertFalse(restored.showsFiveHourQuota)
+        }
+        XCTAssertEqual(changes, [.hidden, .codexText, .chatGPTIcon])
+        XCTAssertEqual(loginItem.registerCalls, 0)
+        XCTAssertEqual(loginItem.unregisterCalls, 0)
+    }
+
     private func makeController(_ loginItem: StubLoginItem) -> SettingsWindowController {
         SettingsWindowController(
             settings: UserSettings(statusDisplayMode: .dualProgress, refreshIntervalSeconds: 300),
